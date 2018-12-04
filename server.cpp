@@ -186,16 +186,15 @@ int fillcode(std::string code, char* msg, int start) {
 2 - get user data
 3 - get names
 4 - logoff
-5 - create new user
-6 - login
+5 - create new user/ login
 */
 
 int user_access(std::string username, int code, char* buf, User* other, std::vector<std::string>& names) {
-    if(code > 6 || code < 0) {
-        return;
+    if(code > 5 || code < 0) {
+        return -1;
     }
     User holder;
-    pthread_mutex_lock(mutex);
+    pthread_mutex_lock(&mutex);
     int ret_code = 0;
     if(code == 0) {
         created[username].remove_comm_opt(buf);
@@ -205,7 +204,7 @@ int user_access(std::string username, int code, char* buf, User* other, std::vec
     }
     if(code == 2) {
         holder = created[username];
-        (*other)(holder);
+        *other = holder;
     }
     if(code == 3) {
         for(auto it = created.begin(); it != created.end(); it++) {
@@ -216,26 +215,18 @@ int user_access(std::string username, int code, char* buf, User* other, std::vec
         created[username].logout();
     }
     if(code == 5) {
+        std::string hash(buf);
         if(!created.count(username)) {
             created[username] = *other;
         }
         else {
-            retcode = -1;
-        }
-    }
-    if(code == 6) {
-        if(!created.count(username)) {
-            retcode = -1;
-        }
-        else {
-            std::string hash = created[username].get_password();
-            if(hash.compare(buf)) {
-                retcode = -1;
+            if(created[username].get_password().compare(hash)) {
+                ret_code = -1;
             }
         }
     }
-    pthread_mutex_unlock(mutex);
-    return retcode;
+    pthread_mutex_unlock(&mutex);
+    return ret_code;
 }
 
 void* handle_client(void* arg) {
@@ -312,7 +303,15 @@ void* handle_client(void* arg) {
         */
         token = strtok(buf, " ");
         if(!strcmp(token, "LOGIN")) {
-            
+            token = strtok(NULL, " ");
+            std::string id(token);
+            char hash[20];
+            memcpy(&buf[id.length() + 6], hash, 20);
+            check = user_access(id, 5, hash, &user, names);
+            if(check == 0) {
+                user.set_username(id);
+                user.set_password(std::string(hash));
+            }
         }
         else if(!(user.get_username().compare(""))) {
             close(comm_sock);
@@ -489,7 +488,7 @@ void* handle_client(void* arg) {
 int main(int argc, char** argv) {
     // get local folder for writing file
     srand(8675309);
-    pthread_mutex_init(mutex);
+    pthread_mutex_init(&mutex, NULL);
     int listener;
     struct sockaddr_in new_conn;
     socklen_t new_conn_len = sizeof(sockaddr_in);

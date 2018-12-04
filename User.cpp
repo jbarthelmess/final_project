@@ -27,7 +27,7 @@ User::User(std::string name, std::string pass) {
     last_online = 0;
 }
 
-User::User(User old) {
+User::User(const User& old) {
     username = old.username;
     password = old.password;
     rsa_send_n = old.rsa_send_n;
@@ -50,7 +50,7 @@ User::User(User old) {
     for(auto it = old.comm_priority.begin(); it != old.comm_priority.end(); it++) {
         comm_priority.push_back(*it);
     }
-    comm_info = old.comm_info
+    comm_info = old.comm_info;
 }
 
 bool User::make_secure(std::vector<uint32_t>& sec) {

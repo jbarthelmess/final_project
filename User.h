@@ -15,7 +15,7 @@ class User {
     public:
     User();
     User(std::string name, std::string pass);
-    User(User old);
+    User(const User& old);
     
     bool is_secure() { return secure;}
     bool is_online() { return online;}
@@ -45,6 +45,7 @@ class User {
     bool has_preference(std::string pref);
     void get_des(uint32_t& DES) {DES = des;}
     std::string get_username() { return std::string(username);}
+    std::string get_password() { return std::string(password);}
     void get_thread_read(int& pipe) {pipe = thread_pipe_r;}
     
     private:

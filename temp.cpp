@@ -431,7 +431,7 @@ int main(int argc, char** argv) {
             getpassword(buf, 2048, password);
         }
         if(new_user) {
-            strcpy(msg, "LOGIN ")'
+            strcpy(msg, "LOGIN ");
             strcat(msg, username.c_str());
             e_and_send(msg, 6+username.length(), "DES", user, comm_sock);
         }
