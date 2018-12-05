@@ -379,6 +379,8 @@ int main(int argc, char** argv) {
         	logged_in = true;
         }
         else {
+        //WE DON'T GET HERE. SERVER MUST NEVER RESPOND IF IT'S INCORRECT PASSWORD. AND POSSIBLY 
+        //EVEN IF CORRECT PASSWORD
         	std::cout << "Login failed, username may be taken, or incorrect password provided." << std::endl;
         }
     }
@@ -518,10 +520,15 @@ int main(int argc, char** argv) {
             }
             else if(strcmp(token, "SET") == 0) {
                 token = strtok(NULL, " ");
+                std::string old_pref = user.get_preference();
                 err_check = user.set_preference(std::string(token));
                 if(!err_check) {
-                    err_check = sprintf(msg, "SET %s", token);
-                    e_and_send(msg, err_check, user.get_preference(), user, comm_sock, NULL);
+                	std::string new_pref=user.get_preference();
+                    err_check = sprintf(msg, "SET %s", new_pref.c_str());
+                    //std::cout<<"THE MESSAGE IS: "<<msg<<std::endl;
+                    //std::cout<<"OLD_PREF IS: "<<old_pref.c_str()<<std::endl;
+                    //std::cout<<"NEW_PREF IS: "<<new_pref.c_str()<<std::endl;
+                    e_and_send(msg, err_check, old_pref, user, comm_sock, NULL);
                 }
             }
             else if(strcmp(token, "HELP") == 0) {

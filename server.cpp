@@ -103,7 +103,7 @@ int user_access(std::string username, int code, char* buf, User* other, std::vec
         created[username].remove_comm_opt(buf);
     }
     if(code == 1) {
-        created[username].set_preference(std::string(buf));
+        ret_code = created[username].set_preference(std::string(buf));
     }
     if(code == 2) {
         holder = created[username];
@@ -216,6 +216,7 @@ void* handle_client(void* arg) {
         }
         if(!FD_ISSET(comm_sock, &reading)) continue;
         check = recv(comm_sock, buf, 4095, 0);
+        std::cout << "USING " << user.get_preference() << " TO DECRYPT MSG" << std::endl;
         d_and_check(buf, check, msg, user.get_preference(), user);
         token = strtok(msg, " ");
         if(!strcmp(token, "LOGIN")) {
@@ -384,10 +385,17 @@ void* handle_client(void* arg) {
             }
         }
         else if(!strcmp(token, "SET")) {
+        	std::cout << "SETTING NEW PRIORITY" << std::endl;
             token = strtok(NULL, " ");
-            err = user.set_preference(token);
+            std::cout<<"TOKEN IS "<<token<<std::endl;
+            err = user.set_preference(std::string(token));
+            std::cout << "USER will now use " << user.get_preference() << " TO ENCRYPT MSGS" << std::endl;
             if(!err) {
-                user_access(user.get_username(), 1, token, NULL, names);
+            	std::cout << "USING USER ACCESS" << std::endl;
+                err = user_access(user.get_username(), 1, token, NULL, names);
+                if(err == -1) {
+                	std::cout << "Unsuccessfully changed user_access" << std::endl;
+                }
             }
         }
         else if(!strcmp(token, "MSG")) {

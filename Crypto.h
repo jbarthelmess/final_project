@@ -7,6 +7,7 @@
 #include <ctime>
 #include <cstdio>
 #include<unistd.h>
+#include "User.h"
 //MIGHT NEED TO CHANGE LEFTROTATE1 FOR 28 BIT 
 uint64_t des_leftrotate1(int64_t m){
 
@@ -302,39 +303,46 @@ int64_t leftrotate(int64_t m, uint64_t num){
 	}
 	return m;
 }
-void SHA_1(std::string m,uint32_t* hash){
-
+void SHA_1(char* m,uint32_t num_bytes, uint32_t* hash){
 	int32_t h0 = 0x67452301;
 	int32_t h1 = 0xEFCDAB89;
 	int32_t h2 = 0x98BADCFE;
 	int32_t h3 = 0x10325476;
 	int32_t h4 = 0xC3D2E1F0;
-	int64_t ml=m.length();
-
+	int64_t ml=num_bytes;
+	char* msg;
 	int64_t m2=ml%64;
+	int64_t m3;
 	//exactly right. No padding nessisary
-	if(m2==56){}
+	if(m2==56){
+		msg = new char[num_bytes+100];
+		memset(msg, num_bytes+100, 0);
+		m3 = num_bytes;
+	}
 	//not enough add 56-ml chars to m.
 	else if(m2<56){
-		m.append(56-m2,'\0');	//use 0 as the padding
+		msg = new char[num_bytes + (56-m2)+100];
+		memset(msg, num_bytes + (56-m2)+100, 0);	//use 0 as the padding
+		m3 = num_bytes+56-m2;
 	}
 
 	else if(m2>56){
-		m.append(120-m2,'\0');	//use 0 as the padding
+		msg = new char[num_bytes + (120-m2)+100];
+		memset(msg, num_bytes + (120-m2)+100, 0);	//use 0 as the padding
+		m3 = num_bytes + 120 -m2;
 	}
-	uint64_t const total_length=m.length();
-	char m_c[total_length];
-	memcpy(m_c,m.c_str(),total_length);
-	memcpy(&m_c[total_length],&ml,8);
+	memcpy(msg, m, num_bytes);
+	uint64_t const total_length=m3;
+	memcpy(&msg[total_length],&ml,8);
 	
-	//m_c is some multiple of 512 bits
+	//msg is some multiple of 512 bits
 	uint64_t num_chunks=(total_length+8)/64;
 	for (uint64_t i = 0; i < num_chunks; ++i){		//break 64 bytes into 16 4 byte pieces
 
 		//turn these 16 chunks into 80  4 byte chunks
 		int32_t extended[80];
 		//cpy the first 16 chunks in.
-		memcpy(extended,m_c,64);
+		memcpy(extended,&msg[64*i],64);
 		for (uint64_t j = 16; j < 80; ++j){
 
 			int32_t w1,w2,w3,w4;
@@ -355,11 +363,12 @@ void SHA_1(std::string m,uint32_t* hash){
 		
 
 		for (uint64_t j = 0; j < 80; ++j){
+			
 			int32_t w=extended[j];
 			int32_t f;
 			int32_t k;
 			if(j<20){
-				f=(b&c) |((~b)&d);\
+				f=(b&c) |((~b)&d);
 				k=0x5A827999;
 			}
 			else if(j<40){
@@ -374,7 +383,7 @@ void SHA_1(std::string m,uint32_t* hash){
 				f=b^c^d;
 				k=0xCA62C1D6;
 			}
-			int32_t temp=leftrotate(a,5)+f+e+k+w;
+			int64_t temp=(leftrotate(a,5)+f+e+k+w) % 4294967296;
 			e=d;
 			d=c;
 			c=(leftrotate(b,30));
@@ -389,6 +398,7 @@ void SHA_1(std::string m,uint32_t* hash){
 	}
  	int32_t hh[5]={h0,h1,h2,h3,h4};
  	memcpy(hash,hh,20);
+ 	delete [] msg;
 }
 
 uint32_t exp_mod( uint32_t base,  uint32_t exp,  uint32_t mod){
@@ -518,19 +528,19 @@ uint32_t find_prime_root(uint32_t p, std::vector<uint32_t>& result_facs)
     }
     return 0;
 }
-uint32_t Euclid( uint32_t a,  uint32_t b, uint32_t& inverse){
+uint64_t Euclid( int64_t a,  int64_t b, int64_t& inverse){
 	//if they're backwards flip them.
 	if (a<b){
-		uint32_t t=b;
+		uint64_t t=b;
 		b=a;
 		a=t;
 	}
-	int32_t a2=a;
-	std::vector<int32_t> q;
+	int64_t a2=a;
+	std::vector<int64_t> q;
 
 
 
-	uint32_t r= a%b;
+	uint64_t r= a%b;
 	q.push_back(a/b);
 	while(r!=0){
 		a=b;
@@ -539,17 +549,16 @@ uint32_t Euclid( uint32_t a,  uint32_t b, uint32_t& inverse){
 		q.push_back(a/b);
 		if(a<0||b<0){
 			std::cout<<"NEGATIVE ERROR"<<std::endl;
-			std::cout << a << ' '<< b <<std::endl;
 		}
 	}
 
 
 
 	//extended 
-	int32_t p0=0;
-	int32_t p1=1;
-	for (uint32_t i = 0; i < q.size()-1; ++i){
-		int32_t t=p1;
+	int64_t p0=0;
+	int64_t p1=1;
+	for (uint64_t i = 0; i < q.size()-1; ++i){
+		int64_t t=p1;
 		p1=(p0-p1*q[i])%a2;
 		p0=t;
 	}
@@ -559,19 +568,20 @@ uint32_t Euclid( uint32_t a,  uint32_t b, uint32_t& inverse){
 	inverse=p1;
 	return b;
 }
-void RSA_key_maker( uint32_t& n, uint32_t& pub,  uint32_t& priv){
+void RSA_key_maker( uint64_t& n, uint64_t& pub,  uint64_t& priv){
 	//Find two primes p,q
 	uint32_t p,q;
-	p=generate_prime((32768*2) -1);
-	q=generate_prime((32768*2) -1);
+	p=generate_prime(65535);
+	q=generate_prime(65535);
 	n=p*q;
-	uint32_t phi=(p-1)*(q-1);
 
+	uint64_t phi=(p-1)*(q-1);
+	//std::cout << "phi: " << phi << std::endl;
 	//Find a coprime to phi between 1 and phi.
 	//Random? start low go high? start hi go low? double check if it comes out "wierd"
 	bool found=false;
-	int32_t e=rand()%(phi-2);
-    uint32_t inverse;
+	 int64_t e=rand() % (phi -2);
+	 int64_t inverse;
 	while(!found){
 		if(e>phi){
 			std::cout<<"ERROR";
@@ -593,8 +603,8 @@ void RSA_key_maker( uint32_t& n, uint32_t& pub,  uint32_t& priv){
 		std::cout<<"ERROR NEGATIVE KEY";
 	}
 }
-uint32_t RSA_Encrypt_Decrypt( uint32_t m,  uint32_t e_d,  uint32_t n){
-	uint32_t a=exp_mod(m,e_d,n);
+uint64_t RSA_Encrypt_Decrypt( uint64_t m,  uint64_t e_d,  uint64_t n){
+	uint64_t a=exp_mod(m,e_d,n);
 	if(a<0){
 		return a+n;
 	}
@@ -605,9 +615,66 @@ uint32_t RSA_Encrypt_Decrypt( uint32_t m,  uint32_t e_d,  uint32_t n){
 		return a;
 }
 
-int do_RSA_encrypt_decrypt(char* buf, int num_bytes, char* loc, uint32_t n, uint32_t e_d) {
+void semantic_RSA_encrypt(uint32_t m,uint32_t e,uint32_t n, uint32_t& e1,uint32_t& e2){
+	uint32_t h[5];
+	uint32_t r=rand()%n;
+	e1=RSA_Encrypt_Decrypt(r,e,n);
+	char r_s[20];
+	int len = sprintf(r_s, "%u", r);
+	
+	SHA_1(r_s, len,h);
+	uint32_t hash;
+	memcpy(&hash,h,4);
+	e2=hash^m;
+	// std::cout<<e1<<' '<<e2<<std::endl;
+}
+uint64_t semantic_RSA_decrypt(uint64_t e1,uint64_t e2,uint64_t d,uint64_t n){
+	// std::cout<<e1<<' '<<e2<<' '<<d<<' '<<n<<std::endl;
+	uint64_t r=RSA_Encrypt_Decrypt(e1,d,n);
+	if(r > n) {
+		std::cout << "encryption error" << std::endl;
+	}
+	char r_s[20];
+	int len = sprintf(r_s, "%lu", r);
+	uint32_t h[5];
+	SHA_1(r_s, len,h);
+	uint64_t hash;
+	memcpy(&hash,h,4);
+	return e2^hash;
+	
+}
+int do_RSA_encrypt(char* buf, int num_bytes, char* loc, uint32_t n, uint32_t e_d) {
     uint32_t block= 0;
     uint32_t cipher =0;
+    int bytes_left = num_bytes;
+    int i = 0;
+    char buffer[2];
+    memset(buffer, 0, 2);
+    while(bytes_left > 1) {
+        block = 0;
+        cipher = 0;
+        memcpy(&block, &buf[i], 2);
+        //std::cout << "block: "<<block << std::endl;
+        cipher = RSA_Encrypt_Decrypt(block, e_d, n);
+        //std::cout << "cipher:" << cipher << std::endl;
+        memcpy(&loc[2*i], &cipher, 4);
+        bytes_left-= 2;
+        i+=2;
+    }
+    if(bytes_left > 0) {
+        memcpy(&buffer, &buf[i], bytes_left);
+        memcpy(&block, buffer, 2);
+        cipher = RSA_Encrypt_Decrypt(block, e_d, n);
+        memcpy(&loc[2*i], &cipher, 4);
+        i+=2;
+    }
+    return 2*i;
+}
+
+int do_RSA_decrypt(char* buf, int num_bytes, char* loc, uint32_t n, uint32_t e_d) {
+	uint32_t block= 0;
+    uint32_t cipher =0;
+    uint16_t small;
     int bytes_left = num_bytes;
     int i = 0;
     char buffer[4];
@@ -615,52 +682,30 @@ int do_RSA_encrypt_decrypt(char* buf, int num_bytes, char* loc, uint32_t n, uint
     while(bytes_left > 3) {
         block = 0;
         cipher = 0;
-        memcpy(&block, &buf[i], 4);
+        memcpy(&block, &buf[2*i], 4);
         std::cout << "block: "<<block << std::endl;
         cipher = RSA_Encrypt_Decrypt(block, e_d, n);
+        if(cipher > 65535) {
+        	std::cout << "decrypt error" << std::endl;
+        }
         std::cout << "cipher:" << cipher << std::endl;
-        memcpy(&loc[i], &cipher, 4);
+        small = cipher;
+        memcpy(&loc[i], &cipher, 2);
         bytes_left-= 4;
-        i+=4;
+        i+=2;
     }
     if(bytes_left > 0) {
-        memcpy(&buffer, &buf[i], bytes_left);
+        memcpy(&buffer, &buf[2*i], bytes_left);
         memcpy(&block, buffer, 4);
         cipher = RSA_Encrypt_Decrypt(block, e_d, n);
         memcpy(&loc[i], &cipher, 4);
-        i+=4;
+        i+=2;
     }
     return i;
 }
-
-void semantic_RSA_encrypt(uint32_t m,uint32_t e,uint32_t n, uint64_t& e1,uint64_t& e2){
-	uint32_t h[5];
-	uint32_t max=1048576;
-	uint32_t r=rand()%max;
-	e1=RSA_Encrypt_Decrypt(r,e,n);
-	std::string r_s=std::to_string(r);
-	
-	SHA_1(r_s,h);
-	uint64_t hash;
-	memcpy(&hash,h,8);
-	e2=hash^m;
-	// std::cout<<e1<<' '<<e2<<std::endl;
-}
-uint64_t semantic_RSA_decrypt(uint64_t e1,uint64_t e2,uint64_t d,uint64_t n){
-	// std::cout<<e1<<' '<<e2<<' '<<d<<' '<<n<<std::endl;
-	uint32_t r=RSA_Encrypt_Decrypt(e1,d,n);
-	std::string r_s=std::to_string(r);
-	uint32_t h[5];
-	SHA_1(r_s,h);
-	uint64_t hash;
-	memcpy(&hash,h,8);
-	return e2^hash;
-	
-}
-
-int do_SEM_encrypt(char* buf, int num_bytes, char* loc, uint64_t n, uint64_t e_d) {
+int do_SEM_encrypt(char* buf, int num_bytes, char* loc, uint32_t n, uint32_t e_d) {
     uint32_t block = 0;
-    uint64_t e1, e2;
+    uint32_t e1, e2;
     e1 = e2 = 0;
     int bytes_left = num_bytes;
     int i = 0;
@@ -701,6 +746,7 @@ int do_SEM_decrypt(char* buf, int num_bytes, char* loc, uint64_t n, uint64_t e_d
         i+=4;
     }
     if(bytes_left > 0) {
+    	std::cout << "Something is probably wrong..." << std::endl;
         memcpy(buffer, &buf[i], bytes_left);
         memcpy(&e1, buffer, 4);
         memcpy(&e2, &buffer[4], 4);
@@ -711,7 +757,7 @@ int do_SEM_decrypt(char* buf, int num_bytes, char* loc, uint64_t n, uint64_t e_d
     return i;
 }
 
-uint32_t DH_generator(uint32_t& N, uint32_t& pub, uint32_t& priv) {
+uint32_t DH_generator(uint64_t& N, uint64_t& pub, uint64_t& priv) {
     N = generate_prime(0);
     std::vector<uint32_t> facs;
     uint32_t root = find_prime_root(N, facs);
@@ -730,9 +776,181 @@ uint32_t DH_generator(uint32_t& N, uint32_t& pub, uint32_t& priv) {
     return root;
 }
 
+int e_and_send(char* buf, int num_bytes, std::string code, User& user, int comm_sock, char* put) {
+    uint64_t N, e;
+    uint64_t des;
+    char* encrypt;
+    int bytes_written;
+    int pad_len;
+    uint32_t MAC[5];
+    char mac[20];
+    char* buffer = new char[num_bytes +21];
+    memcpy(buffer, buf, num_bytes);
+    memset(&buffer[num_bytes], 0, 1);
+    if(!code.compare("RSA")) {
+    	pad_len = num_bytes%2;
+    	for(int i = 0; i < pad_len; i++) {
+    		buf[num_bytes + i] = '\0';
+    	}
+    	SHA_1(buf, num_bytes+pad_len, MAC);
+    	memcpy(mac, MAC, 20);
+        user.get_rsa_send(N, e);
+        encrypt= new char[2*(num_bytes+21)+ 500];
+        bytes_written = do_RSA_encrypt(buffer, num_bytes, encrypt, N, e);
+        des = do_RSA_encrypt(mac, 20, &encrypt[bytes_written], N, e); 
+        if(put != NULL) {
+        	memcpy(put, encrypt, bytes_written + des);
+        }
+        else {
+        	bytes_written = send(comm_sock, encrypt, bytes_written + des, 0);
+        }
+        delete [] encrypt;
+        delete [] buffer;
+        return bytes_written + des;
+    }
+    else if(!code.compare("SEM")) {
+    	pad_len = num_bytes%4;
+    	for(int i = 0; i < pad_len; i++) {
+    		buffer[num_bytes + i] = '\0';
+    	}
+    	SHA_1(buffer, num_bytes+pad_len, MAC);
+    	
+    	memcpy(mac, MAC, 20);
+    	std::cout << "MAC" << std::endl;
+    	for(int i = 0; i < 20; i++) {
+    		printf("%d ", mac[i]);
+    	}
+    	std::cout << std::endl;
+        user.get_sem_send(N, e);
+        encrypt = new char[2*(num_bytes +21)+500];
+        std::cout << N << " " << e << std::endl;
+        std::cout << "BEFORE ENCRYPT: " << num_bytes<<std::endl;
+        for(int i = 0; i < num_bytes; i++) {
+        	printf("%d ", buffer[i]);
+        }
+        std::cout<< std::endl;
+        bytes_written = do_SEM_encrypt(buffer, num_bytes, encrypt, N, e);
+        des = do_SEM_encrypt(mac, 20, &encrypt[bytes_written], N, e);
+        std::cout << "AFTER ENCRYPT: " << bytes_written + des <<std::endl;
+        for(int i = 0; i < bytes_written + des; i++) {
+        	printf("%d ", encrypt[i]);
+        }
+        std::cout<< std::endl;
+        if(put != NULL) {
+        	memcpy(put, encrypt, bytes_written + des);
+        }
+        else {
+        	bytes_written = send(comm_sock, encrypt, bytes_written + des, 0);
+        }
+        delete [] encrypt;
+        delete [] buffer;
+        return bytes_written + des;
+    }
+    else if(!code.compare("DES")) {
+        user.get_des(des);
+       /* 
+       	make sure that encrypt has divisible by 8 bytes. 
+        if char buf[13]="ADD PADDING!"
+        need to add 3 so char[16]encrypt
+        MY ATTEMPT AT SOLUTION TO PADDING
+        int x= (20+num_bytes)%8;
+        int padding_needed=8-x;
+        encrypt= new char[num_bytes + 20 + padding_needed;
+        look at crypt_test for example of sorts.
+        */
+        pad_len = 8 - (num_bytes%8);
+    	for(int i = 0; i < pad_len; i++) {
+    		buffer[num_bytes + i] = '\0';
+    	}
+    	SHA_1(buffer, num_bytes+pad_len, MAC);
+    	memcpy(mac, MAC, 20);
+        encrypt = new char[500+ num_bytes + 20];
+        bytes_written = do_des_encrypt(buffer, num_bytes, encrypt, des);
+        N = do_des_encrypt(mac, 20, &encrypt[bytes_written], des);
+        if(put != NULL) {
+        	memcpy(put, encrypt, bytes_written + N);
+        }
+        else {
+        	bytes_written = send(comm_sock, encrypt, bytes_written + N, 0);
+        }
+        delete [] encrypt; 
+        delete [] buffer;
+        return bytes_written + N;
+    }
+    else {
+    	delete [] buffer;
+        return false;
+    }
+}
 
-
-
-
-
+int d_and_check(char* buf, int num_bytes, char* msg, std::string code, User& user) {
+    uint64_t N, d;
+    uint64_t des;
+    int bytes_written;
+    uint32_t MAC[5];
+    uint32_t OMAC[5];
+    char mac[24];
+    char* msg_mac;
+    memset(mac, 0, 24);
+    if(!code.compare("RSA")) {
+    	std::cout << "GOT IN RSA" << std::endl;
+        user.get_rsa_recv(N, d);
+        bytes_written = do_RSA_decrypt(buf, num_bytes, msg, N, d);
+        msg_mac = &msg[bytes_written -20];
+        SHA_1(msg, bytes_written-20, MAC);
+        memcpy(mac, MAC, 20);
+        if(memcmp(mac, msg_mac, 20)!= 0) {
+            std::cerr << "Something went wrong in RSA, shutting down..." << std::endl;
+            //close(comm_sock);
+            //exit(1);
+            return -1;
+        }
+        else
+            return bytes_written -20;
+    }
+    else if(!code.compare("SEM")) {
+    	std::cout << "GOT IN SEM" << std::endl;
+        user.get_sem_recv(N, d);
+        std::cout << N << " " << d << std::endl;
+        std::cout << "BEFORE DECRYPTION: " << num_bytes<< std::endl;
+        for(int i = 0; i < num_bytes; i++) {
+        	printf("%d ", buf[i]);
+        }
+        std::cout << std::endl;
+        bytes_written = do_SEM_decrypt(buf, num_bytes, msg, N, d);
+        std::cout << "AFTER DECRYPTION: "<< bytes_written << std::endl;
+        for(int i = 0; i < bytes_written; i++) {
+        	printf("%d ", msg[i]);
+        }
+        std::cout << std::endl;
+        msg_mac = &msg[bytes_written-20];
+        SHA_1(msg, bytes_written - 20, MAC);
+        memcpy(mac, MAC, 20);
+        if(memcmp(mac, msg_mac, 20) != 0) {
+            std::cerr << "Something went wrong in SEM, shutting down..." << std::endl;
+            //close(comm_sock);
+            //exit(1);
+            return -1;
+        }
+        else
+            return bytes_written - 20;
+    }
+    else if(!code.compare("DES")) {
+    	std::cout << "GOT INTO DES" << std::endl;
+        user.get_des(des);
+        bytes_written = do_des_decrypt(buf, num_bytes, msg, des);
+        msg_mac = &msg[bytes_written-24];
+        memcpy(OMAC, msg_mac, 20);
+        SHA_1(msg, bytes_written-24, MAC);
+        if(memcmp(MAC, OMAC, 20) != 0) {
+            std::cerr << "Something went wrong in DES, shutting down..." << std::endl;
+            //close(comm_sock);
+            //exit(1);
+            return -1;
+        }
+        else
+            return bytes_written - 24;
+    }
+    return -1;
+}
 
