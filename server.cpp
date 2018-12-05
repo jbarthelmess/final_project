@@ -22,135 +22,34 @@
 std::unordered_map<std::string, User> created;
 pthread_mutex_t mutex;
 
-bool e_and_send(char* buf, int num_bytes, std::string code, User& user) {
-    uint32_t N, e;
-    uint32_t des;
-    int comm_sock, msg_sock, thread_pipe;
-    user.get_contact_info(comm_sock, msg_sock, thread_pipe);
-    char* encrypt;
-    int bytes_written;
-    uint32_t MAC[5];
-    char mac[20];
-    SHA_1(std::string(buf), MAC);
-    memcpy(mac, MAC, 20);
-    if(!code.compare("RSA")) {
-        user.get_rsa_send(N, e);
-        encrypt= new char[num_bytes+20];
-        bytes_written = do_RSA_encrypt_decrypt(buf, num_bytes, encrypt, N, e);
-        des = do_RSA_encrypt_decrypt(mac, 20, &encrypt[bytes_written], N, e);
-        bytes_written = send(comm_sock, encrypt, bytes_written+des, 0);
-        if(bytes_written != -1) {
-            return true;
-        }
-        else 
-            return false;
-    }
-    else if(!code.compare("SEM")) {
-        user.get_sem_send(N, e);
-        encrypt = new char[3*num_bytes];
-        bytes_written = do_SEM_encrypt(buf, num_bytes, encrypt, N, e);
-        des = do_SEM_encrypt(mac, 20, &encrypt[bytes_written], N, e);
-        bytes_written = send(comm_sock, encrypt, bytes_written+des, 0);
-        if(bytes_written != -1) {
-            return true;
-        }
-        else
-            return false;
-    }
-    else if(!code.compare("DES")) {
-        user.get_des(des);
-        encrypt = new char[num_bytes + 20];
-        bytes_written = do_des_encrypt(buf, num_bytes, encrypt, des);
-        N = do_des_encrypt(mac, 20, &encrypt[bytes_written], des);
-        bytes_written = send(comm_sock, encrypt, bytes_written + N, 0);
-        if(bytes_written != -1) {
-            return true;
-        }
-        else 
-            return false;
-    }
-    else
-        return false;
-}
-
-bool d_and_check(char* buf, int num_bytes, char* msg, std::string code, User& user) {
-    uint32_t N, d;
-    uint32_t des;
-    int bytes_written;
-    int comm_sock, msg_sock, thread_sock;
-    user.get_contact_info(comm_sock, msg_sock, thread_sock);
-    uint32_t MAC[5];
-    char mac[24];
-    char* msg_mac;
-    memset(mac, 0, 24);
-    if(!code.compare("RSA")) {
-        user.get_rsa_recv(N, d);
-        bytes_written = do_RSA_encrypt_decrypt(buf, num_bytes, msg, N, d);
-        for(int i = 0; i < bytes_written; i++) {
-            printf("%d ", msg[i]);
-        }
-        msg_mac = &msg[bytes_written - 24];
-        SHA_1(std::string(msg, bytes_written-24), MAC);
-        memcpy(mac, MAC, 20);
-        if(strncmp(mac, msg_mac, 20)) {
-            std::cerr << "Something went wrong, shutting down..." << std::endl;
-            close(comm_sock);
-            exit(1);
-        }
-        else
-            return true;
-    }
-    else if(!code.compare("SEM")) {
-        user.get_sem_recv(N, d);
-        bytes_written = do_SEM_decrypt(buf, num_bytes, msg, N, d);
-        msg_mac = &msg[bytes_written-24];
-        SHA_1(std::string(msg, bytes_written-24), MAC);
-        memcpy(mac, MAC, 20);
-        if(strncmp(mac, msg_mac, 20)) {
-            std::cerr << "Something went wrong, shutting down..." << std::endl;
-            close(comm_sock);
-            exit(1);
-        }
-        else
-            return true;
-    }
-    else if(!code.compare("DES")) {
-        user.get_des(des);
-        bytes_written = do_des_decrypt(buf, num_bytes, msg, des);
-        msg_mac = &msg[bytes_written-24];
-        SHA_1(std::string(msg, bytes_written-24), MAC);
-        memcpy(mac, MAC, 20);
-        if(strncmp(mac, msg_mac, 20)) {
-            std::cerr << "Something went wrong, shutting down..." << std::endl;
-            close(comm_sock);
-            exit(1);
-        }
-        else
-            return true;
-    }
-    return false;
-}
-
 int handshake(User& user) {
     int comm_sock, msg_sock, thread_w, check;
     char buf[4095];
     char msg[1024];
     user.get_contact_info(comm_sock, msg_sock, thread_w);
+    uint64_t N2, e2, d2;
+    RSA_key_maker(N2, e2, d2);
     uint32_t N, e, d, g, other;
-    RSA_key_maker(N, e, d);
+    N = N2;
+    e = e2;
+    d = d2;
     memcpy(buf, &N, 4);
     memcpy(&buf[4], &e, 4);
-    user.set_rsa_recv(N, d);
-    user.set_sem_recv(N, d);
+    user.set_rsa_recv(N2, d2);
+    user.set_sem_recv(N2, d2);
     check = send(comm_sock, buf, 8, 0);
     check = recv(comm_sock, buf, 20, 0);
     memcpy(&N, buf, 4);
     memcpy(&e, &buf[4], 4);
-    user.set_rsa_send(N, e);
-    user.set_sem_send(N, e);
+    N2 = N;
+    e2 = e;
+    user.set_rsa_send(N2, e2);
+    user.set_sem_send(N2, e2);
     memcpy(&N, &buf[8], 4);
     memcpy(&e, &buf[12], 4);
     memcpy(&g, &buf[16], 4);
+    N2 = N;
+    e2 = e;
     d = rand()%N;
     other = exp_mod(e, d, N);
     user.set_des(other);
@@ -160,24 +59,28 @@ int handshake(User& user) {
     if(check == -1) {
         perror("send");
     }
-    user.get_rsa_send(N, e);
-    user.get_rsa_recv(N, d);
     return 1;
 }
 
 int fillcode(std::string code, char* msg, int start) {
     if(!code.compare("DES")) {
         uint64_t item = rand();
-        memcpy(&msg[start], &item, 8);
-        return start+8;
+        strcpy(&msg[start], "DES");
+        memcpy(&msg[start+3], &item, 8);
+        return start+11;
     }
     else {
+        uint64_t N2, e2, d2;
+        RSA_key_maker(N2, e2, d2);
         uint32_t N, e, d;
-        RSA_key_maker(N, e, d);
-        memcpy(&msg[start], &N, 4);
-        memcpy(&msg[start+4], &e, 4);
-        memcpy(&msg[start+8], &d, 4);
-        return start+12; 
+        N = N2;
+        e = e2;
+        d = d2;
+        strcpy(&msg[start], code.c_str());
+        memcpy(&msg[start+3], &N, 4);
+        memcpy(&msg[start+7], &e, 4);
+        memcpy(&msg[start+11], &d, 4);
+        return start+15; 
     }
 }
 /* user access options
@@ -237,7 +140,9 @@ void* handle_client(void* arg) {
     char msg[4096];
     int comm_sock, msg_sock, thread_pipe_write, thread_pipe_read;
     char* token;
+    struct sockaddr_in msg_sock_info;
     int err;
+    unsigned short msg_port;
     User other;
     user.get_contact_info(comm_sock, msg_sock, thread_pipe_write);
     user.get_thread_read(thread_pipe_read);
@@ -271,46 +176,69 @@ void* handle_client(void* arg) {
                     memcpy(&key, &buf[err-8], 8);
                     other.set_des(key);
                     other.set_preference("DES");
-                    conn[other.get_username()] = other;
                     write(other_thr, "ACK", 3);
+                    err = sprintf(msg, "CONNECT %s %s", other.get_username().c_str(), token);
+                    memcpy(&msg[err+1], &key, 8);
+                    e_and_send(msg, err+9, user.get_preference(), user, comm_sock, NULL);
                 }
                 else {
+                    uint64_t N2, e2, d2;
+                    RSA_key_maker(N2, e2, d2);
                     uint32_t N, e, d;
-                    RSA_key_maker(N, e, d);
+                    N = N2;
+                    e = e2;
+                    d = d2;
                     other.set_rsa_recv(N, d);
                     other.set_sem_recv(N, d);
-                    int saving = sprintf(msg, "CONNECT %s", token);
-                    memcpy(&msg[saving], &N, 4);
-                    memcpy(&msg[saving+4], &e, 4);
-                    write(other_thr, msg, saving+8);
+                    int saving = sprintf(msg, "CONNECT %s %s",other.get_username().c_str(), token);
+                    memcpy(&msg[saving+1], &N, 4);
+                    memcpy(&msg[saving+5], &e, 4);
+                    write(other_thr, msg, saving+9);
                     memcpy(&N, &buf[err-8], 4);
                     memcpy(&e, &buf[err-4], 4);
                     other.set_rsa_send(N, e);
                     other.set_sem_send(N, e);
                     other.set_preference(std::string(token));
+                    memcpy(&msg[saving+9], &N, 4);
+                    memcpy(&msg[saving+13], &d, 4);
+                    e_and_send(msg, saving+17, user.get_preference(), user, comm_sock, NULL);
                 }
                 conn[other.get_username()] = other;
             }
             else {
                 token = strtok(NULL, " ");
-                conn.erase(token);
+                conn.erase(std::string(token));
             }
         }
         if(!FD_ISSET(comm_sock, &reading)) continue;
         check = recv(comm_sock, buf, 4095, 0);
-        /*
-            Decryption
-        */
-        token = strtok(buf, " ");
+        d_and_check(buf, check, msg, user.get_preference(), user);
+        token = strtok(msg, " ");
         if(!strcmp(token, "LOGIN")) {
             token = strtok(NULL, " ");
             std::string id(token);
             char hash[20];
-            memcpy(&buf[id.length() + 6], hash, 20);
+            memcpy(hash, &buf[id.length() + 6], 20);
             check = user_access(id, 5, hash, &user, names);
             if(check == 0) {
                 user.set_username(id);
                 user.set_password(std::string(hash));
+                err = sprintf(buf, "SUC");
+                e_and_send(buf, 3, "DES", user, comm_sock, NULL);
+                err = recv(comm_sock, buf, 4095, 0);
+                d_and_check(buf, err, msg, user.get_preference(), user);
+                memcpy(&msg_sock_info, buf, sizeof(struct sockaddr_in));
+                msg_sock = socket(AF_INET, SOCK_STREAM, 0);
+                if(connect(msg_sock, (struct sockaddr*) &msg_sock_info, sizeof(struct sockaddr_in))) {
+                	sprintf(buf, "ERROR");
+                	e_and_send(buf, 5, user.get_preference(), user, comm_sock, NULL);
+                	perror("connect");
+                	close(comm_sock);
+                	close(thread_pipe_read);
+                	close(thread_pipe_write);
+                	return NULL;
+                }
+                
             }
         }
         else if(!(user.get_username().compare(""))) {
@@ -323,6 +251,8 @@ void* handle_client(void* arg) {
         if(!strcmp(token, "CONNECT")) {
             token = strtok(NULL, " ");
             if(conn.count(std::string(token))) {
+            	strcpy(buf, "FAIL");
+                e_and_send(buf, 4, user.get_preference(), user, comm_sock, NULL);
                 continue;
             }
             user_access(std::string(token), 2, NULL, &other, names);
@@ -367,16 +297,17 @@ void* handle_client(void* arg) {
                 err = fillcode(third, msg, err);
             }
             else {
-                send(comm_sock, "FAIL", 4, 0);
+            	strcpy(buf, "FAIL");
+                e_and_send(buf, 4, user.get_preference(), user, comm_sock, NULL);
                 continue;
             }
             
             if(code.compare("DES")) {
                 uint32_t d, N;
-                memcpy(&msg[err-4], &d, 4);
+                memcpy(&d, &msg[err-4], 4);
                 err-=4;
                 buf[err] = '\0';
-                memcpy(&msg[err-8], &N, 4);
+                memcpy(&N, &msg[err-8], 4);
                 if(!code.compare("RSA")) {
                     other.set_rsa_recv(N, d);
                     other.set_preference("RSA");
@@ -388,14 +319,16 @@ void* handle_client(void* arg) {
             }
             else {
                 uint64_t key;
-                memcpy(&msg[err-8], &key, 8);
+                memcpy(&key, &msg[err-8], 8);
                 other.set_des(key);
                 other.set_preference("DES");
             }
             
-            /* Encrypt and send on thread pipe*/
+            err = send(other_pipe, msg, err, 0);
             err = read(thread_pipe_read, buf, 1024);
             if(!code.compare("DES")) {
+            	err = sprintf(msg, "SUC");
+            	e_and_send(msg, err, user.get_preference(), user, comm_sock, NULL);
                 continue;
             }
             else {
@@ -409,15 +342,21 @@ void* handle_client(void* arg) {
                 else {
                     other.set_sem_send(N, e);
                 }
+                err = sprintf(msg, "SUC");
+                memcpy(&msg[3], &N, 4);
+                memcpy(&msg[7], &e, 4);
+                e_and_send(msg, 11, user.get_preference(), user, comm_sock, NULL);
             }
             conn[other.get_username()] = other;
         }
         else if(!strcmp(token, "DISCONNECT")) {
             token = strtok(NULL, " ");
-            conn.erase(token);
-            user_access(token, 2, NULL, &other, names);
             err = sprintf(msg, "DISCONNECT %s", user.get_username().c_str());
-            /* Encrypt and send */
+            int dummy1, dummy2, dummy3;
+            other = conn[std::string(token)];
+            other.get_contact_info(dummy1, dummy2, dummy3);
+            send(dummy3, msg, err, 0);
+            conn.erase(token);
         }
         else if(!strcmp(token, "DISABLE")) {
             token = strtok(NULL, " ");
@@ -429,7 +368,9 @@ void* handle_client(void* arg) {
             auto it = conn.begin();
             while( it != conn.end()) {
                 if(!((it->second).get_preference()).compare(token)) {
-                    /* Encrypt and send */
+                	int dummy, dummy2, dummy3;
+                	(it->second).get_contact_info(dummy, dummy2, dummy3);
+                    send(dummy3, msg, err, 0);
                     it = conn.erase(it);
                 }
                 else 
@@ -446,14 +387,18 @@ void* handle_client(void* arg) {
         else if(!strcmp(token, "MSG")) {
             token =strtok(NULL, " ");
             other = conn[std::string(token)];
+            int dummy, dummy2, dummy3;
+            other.get_contact_info(dummy, dummy2, dummy3);
             err = sprintf(msg, "MSG %s", user.get_username().c_str());
-            memcpy(&msg[err], &buf[strlen(token)+5], check - strlen(token) +5);
-            /* Encrypt and send*/
+            memcpy(&msg[err+1], &buf[strlen(token)+5], check - strlen(token) +5);
+            e_and_send(msg, check, other.get_preference(), other, dummy2, NULL);
         }
         else if(!strcmp(token, "LOGOFF")) {
             err = sprintf(msg, "DISCONNECT %s", user.get_username().c_str());
             for(auto it = conn.begin(); it != conn.end(); it++) {
-                /*Encrypt and send */
+            	int sock1, dummy, dummy2;
+            	(it->second).get_contact_info(sock1, dummy, dummy2);
+            	send(dummy2, msg, err, 0);
             }
             user_access(user.get_username(), 4, NULL, NULL, names);
             close(comm_sock);
@@ -470,24 +415,26 @@ void* handle_client(void* arg) {
             }
             char * message = new char[total];
             int used = 0;
-            message[0] = '\0';
+            uint32_t size = names.size();
+            memcpy(message, &size, 4);
+            message[4] = '\0';
             for(int i = 0; i < names.size(); i++) {
-                strcat(&message[used], names[i].c_str());
-                used+= names.size();
-                strcat(&message[used], " ");
+                strcat(&message[used+4], names[i].c_str());
+                used+= names[i].size();
+                strcat(&message[used+4], " ");
                 used+=1;
             }
             message[used-1] = '\0';
-            /*Encrypt and send*/
+            e_and_send(message, used, user.get_preference(), user, comm_sock, NULL);
+            delete [] message;
         }
     }
     return NULL;
-    
 }
 
 int main(int argc, char** argv) {
     // get local folder for writing file
-    srand(8675309);
+    srand(8675309*time(NULL));
     pthread_mutex_init(&mutex, NULL);
     int listener;
     struct sockaddr_in new_conn;

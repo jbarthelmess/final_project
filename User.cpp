@@ -8,6 +8,8 @@ User::User() {
     online = false;
     comm_sock = -1;
     msg_sock = -1;
+    thread_pipe_r = -1;
+    thread_pipe_r = -1;
     comm_priority.push_back(std::string("DES"));
     comm_priority.push_back(std::string("SEM"));
     comm_priority.push_back(std::string("RSA"));
@@ -24,6 +26,7 @@ User::User(std::string name, std::string pass) {
     secure = false;
     online = false;
     comm_sock = -1;
+    msg_sock = -1;
     last_online = 0;
 }
 
@@ -53,7 +56,7 @@ User::User(const User& old) {
     comm_info = old.comm_info;
 }
 
-bool User::make_secure(std::vector<uint32_t>& sec) {
+bool User::make_secure(std::vector<uint64_t>& sec) {
     if(sec.size() != 9) {
         return -1;
     }

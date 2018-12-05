@@ -12,124 +12,33 @@
 #include<sys/types.h> // size_t, 
 #include<fcntl.h> 
 #include<termios.h> 
+#include<netdb.h>
+#include<ifaddrs.h>
 #include "Crypto.h"
 #include "User.h"
 
-bool e_and_send(char* buf, int num_bytes, std::string code, User& user, int comm_sock) {
-    uint32_t N, e;
-    uint32_t des;
-    char* encrypt;
-    int bytes_written;
-    uint32_t MAC[5];
-    char mac[20];
-    SHA_1(std::string(buf), MAC);
-    memcpy(mac, MAC, 20);
-    
-    if(!code.compare("RSA")) {
-        user.get_rsa_send(N, e);
-        encrypt= new char[num_bytes+20];
-        bytes_written = do_RSA_encrypt_decrypt(buf, num_bytes, encrypt, N, e);
-        des = do_RSA_encrypt_decrypt(mac, 20, &encrypt[bytes_written], N, e);
-        std::cout << "Sending " << bytes_written + des << " bytes of encrypted data." << std::endl;
-        bytes_written = send(comm_sock, encrypt, bytes_written+des, 0);
-        delete [] encrypt;
-        if(bytes_written != -1) {
-            return true;
-        }
-        else 
-            return false;
-    }
-    else if(!code.compare("SEM")) {
-        user.get_sem_send(N, e);
-        encrypt = new char[3*num_bytes];
-        bytes_written = do_SEM_encrypt(buf, num_bytes, encrypt, N, e);
-        des = do_SEM_encrypt(mac, 20, &encrypt[bytes_written], N, e);
-        bytes_written = send(comm_sock, encrypt, bytes_written+des, 0);
-        if(bytes_written != -1) {
-            return true;
-        }
-        else
-            return false;
-    }
-    else if(!code.compare("DES")) {
-        user.get_des(des);
-        encrypt = new char[num_bytes + 20];
-        bytes_written = do_des_encrypt(buf, num_bytes, encrypt, des);
-        N = do_des_encrypt(mac, 20, &encrypt[bytes_written], des);
-        bytes_written = send(comm_sock, encrypt, bytes_written + N, 0);
-        if(bytes_written != -1) {
-            return true;
-        }
-        else 
-            return false;
-    }
-    else
-        return false;
+void get_address(struct sockaddr_in* finder ) {
+	struct ifaddrs *ifmain, *ifa;
+	getifaddrs(&ifmain);
+	struct sockaddr_in* temp;
+	for(ifa = ifmain; ifa != NULL; ifa = ifa->ifa_next) {
+		if(ifa->ifa_addr == NULL) continue;
+		if(ifa->ifa_addr->sa_family != AF_INET) continue;
+		if(strcmp(ifa->ifa_name, "lo")) {
+			temp = (struct sockaddr_in *) &(ifa->ifa_addr);
+			*finder = *temp;
+			break;
+		}
+	}
+	freeifaddrs(ifmain);
 }
-
-bool d_and_check(char* buf, int num_bytes, char* msg, std::string code, User& user) {
-    uint32_t N, d;
-    uint32_t des;
-    int bytes_written;
-    uint32_t MAC[5];
-    char mac[24];
-    char* msg_mac;
-    memset(mac, 0, 24);
-    if(!code.compare("RSA")) {
-        user.get_rsa_recv(N, d);
-        bytes_written = do_RSA_encrypt_decrypt(buf, num_bytes, msg, N, d);
-        msg_mac = &msg[bytes_written - 24];
-        SHA_1(std::string(msg, bytes_written-24), MAC);
-        memcpy(mac, MAC, 20);
-        if(strncmp(mac, msg_mac, 20)) {
-            std::cerr << "Something went wrong, shutting down..." << std::endl;
-            //close(comm_sock);
-            //exit(1);
-            return false;
-        }
-        else
-            return true;
-    }
-    else if(!code.compare("SEM")) {
-        user.get_sem_recv(N, d);
-        bytes_written = do_SEM_decrypt(buf, num_bytes, msg, N, d);
-        msg_mac = &msg[bytes_written-24];
-        SHA_1(std::string(msg, bytes_written-24), MAC);
-        memcpy(mac, MAC, 20);
-        if(strncmp(mac, msg_mac, 20)) {
-            std::cerr << "Something went wrong, shutting down..." << std::endl;
-            //close(comm_sock);
-            //exit(1);
-            return false;
-        }
-        else
-            return true;
-    }
-    else if(!code.compare("DES")) {
-        user.get_des(des);
-        bytes_written = do_des_decrypt(buf, num_bytes, msg, des);
-        msg_mac = &msg[bytes_written-24];
-        SHA_1(std::string(msg, bytes_written-24), MAC);
-        memcpy(mac, MAC, 20);
-        if(strncmp(mac, msg_mac, 20)) {
-            std::cerr << "Something went wrong, shutting down..." << std::endl;
-            //close(comm_sock);
-            //exit(1);
-            return false;
-        }
-        else
-            return true;
-    }
-    return false;
-}
-
-
 
 int handshake(User& user) {
     char buf[4096];
     char msg[1024];
     int err_check;
     bool suc_check;
+    uint64_t e2, d2, N2;
     uint32_t e, d, N, g;
     int comm_sock, msg_sock, thread_write;
     user.get_contact_info(comm_sock, msg_sock, thread_write);
@@ -146,12 +55,18 @@ int handshake(User& user) {
     memcpy(&e, &buf[4], 4);
     user.set_rsa_send(N, e);
     user.set_sem_send(N, e);
-    RSA_key_maker(N, e, d);
-    user.set_rsa_recv(N, d);
-    user.set_sem_recv(N, d);
+    RSA_key_maker(N2, e2, d2);
+    N = N2;
+    e = e2;
+    d = d2;
+    user.set_rsa_recv(N2, d2);
+    user.set_sem_recv(N2, d2);
     memcpy(buf, &N, 4);
     memcpy(&buf[4], &e, 4);
-    g = DH_generator(N, e, d);
+    g = DH_generator(N2, e2, d2);
+    N = N2;
+    e = e2;
+    d = d2;
     memcpy(&buf[8], &N, 4);
     memcpy(&buf[12], &e, 4);
     memcpy(&buf[16], &g, 4);
@@ -163,8 +78,8 @@ int handshake(User& user) {
     memcpy(&e, buf, 4);
     e = exp_mod(e, d, N);
     user.set_des(e);
-    user.get_rsa_send(N, e);
-    user.get_rsa_recv(N, d);
+    user.get_rsa_send(N2, e2);
+    user.get_rsa_recv(N2, d2);
     return 1;
 }
 
@@ -331,19 +246,17 @@ void getpassword(char* place, int p_size, std::string pass) {
     std::cout << std::endl;
 }
 
-int who(int sock) {
-    char buf[1024];
-    char left[1024];
+int who(int sock, User& user) {
+    char buf[4096];
+    char decrypt[4096];
+    char left[4096];
     char* token;
     char* next;
     int byte_count, num_users;
-    /*strcpy(buf, "WHO");
-    byte_count = send(sock, buf, 3, 0);
-    if(byte_count < 0) {
-        return -1;
-    }*/
-    byte_count = recv(sock, buf, 1023, 0);
-    buf[byte_count] = '\0';
+    
+    byte_count = recv(sock, buf, 4095, 0);
+    byte_count = d_and_check(buf, byte_count, decrypt, user.get_preference(), user);
+    decrypt[byte_count] = '\0';
     if(byte_count < 0) {
         return -1;
     }
@@ -357,17 +270,6 @@ int who(int sock) {
         token = next;
         next = strtok(NULL, " ");
     }
-    if(byte_count == 1023) {
-        strcpy(left, next);
-        byte_count = recv(sock, buf, 1023,0);
-        buf[byte_count] = '\0';
-        next = strtok(buf, " ");
-        strcat(left, next);
-        token = left;
-        next = strtok(NULL, " ");
-        goto people_print;
-    }
-    std::cout << "* " << token << std::endl;
     return 0;
 }
 
@@ -376,20 +278,27 @@ int main(int argc, char** argv) {
         std::cout << "USAGE: ./client.exe <SERV_IP_ADDRESS> <SERV_PORT>" << std::endl;
         return 1;
     }
-    srand(525600);
+    srand(525600*time(NULL));
     int err_check;
-    char buf[2048];
-    char msg[2048];
+    char buf[4096];
+    char msg[4096];
+    char encrypt[4096];
     User user;
     int msg_sock;
     int comm_sock;
     int thread_pipe;
     // connect to server
-    socklen_t conn_len;
+    socklen_t conn_len, msg_conn_len, holder_len;
     unsigned short port = atoi(argv[2]);
     struct sockaddr_in conn;
+    struct sockaddr_in msg_conn;
+    struct sockaddr_in holder;
     memset(&conn, 0, sizeof(struct sockaddr_in));
+    memset(&msg_conn, 0, sizeof(struct sockaddr_in));
+    memset(&holder, 0, sizeof(struct sockaddr_in));
     conn_len = sizeof(conn);
+    msg_conn_len = sizeof(msg_conn);
+    holder_len = sizeof(holder);
     conn.sin_port = htons(port);
     conn.sin_family = AF_INET;
     err_check = inet_pton(AF_INET, argv[1], &conn.sin_addr);
@@ -430,21 +339,49 @@ int main(int argc, char** argv) {
         else {
             getpassword(buf, 2048, password);
         }
-        if(new_user) {
-            strcpy(msg, "LOGIN ");
-            strcat(msg, username.c_str());
-            e_and_send(msg, 6+username.length(), "DES", user, comm_sock);
+        strcpy(buf, username.c_str());
+        strcat(buf, password.c_str());
+        SHA_1(std::string(buf), MAC);
+        strcpy(msg, "LOGIN ");
+        strcat(msg, username.c_str());
+        memcpy(&msg[username.length() + 7], MAC, 20);
+        e_and_send(msg, 27+username.length(), "DES", user, comm_sock, NULL);
+        err_check = recv(comm_sock, buf, 64, 0);
+        err_check = d_and_check(buf, err_check, msg, "DES", user);
+        if(err_check == -1) {
+        	std::cout << "something went wrong" << std::endl;
+        }
+        buf[err_check] = '\0';
+        if(!strcmp(buf, "SUC")) {
+        	std::cout<< "LOGIN successful, setting up with server" <<std::endl;
+        	int listener = socket(AF_INET, SOCK_STREAM, 0);
+        	get_address(&holder);
+        	msg_conn.sin_family = AF_INET;
+        	msg_conn.sin_port = htons(0);
+        	msg_conn.sin_addr.s_addr = htonl(INADDR_ANY);
+        	if(bind(listener, (struct sockaddr* ) &msg_conn, msg_conn_len) == -1) {
+        		perror("bind");
+        		exit(1);
+        	}
+        	if(getsockname(listener, (struct sockaddr*) &msg_conn, &msg_conn_len) == -1) {
+        		perror("getsockname");
+        		exit(1);
+        	}
+        	holder.sin_port = msg_conn.sin_port;
+        	if(listen(listener, 1) == -1) {
+        		perror("listen");
+        		exit(1);
+        	}
+        	memcpy(buf, &holder, holder_len);
+        	e_and_send(buf, holder_len, "DES", user, comm_sock, NULL);
+        	msg_sock = accept(listener, (struct sockaddr*) &msg_conn, &msg_conn_len);
+        	close(listener);
+        	user.set_msg(msg_sock);
+        	logged_in = true;
         }
         else {
-            strcpy(buf, username.c_str());
-            strcat(buf, password.c_str());
-            SHA_1(std::string(buf), MAC);
-            strcpy(msg, "LOGIN ");
-            strcat(msg, username.c_str());
-            memcpy(&msg[username.length() + 6], MAC, 20);
-            e_and_send(msg, 26+username.length(), "DES", user, comm_sock);
+        	std::cout << "Login failed, username may be taken, or incorrect password provided." << std::endl;
         }
-        
     }
     User other;
     /*LOGIN procedure*/
@@ -467,18 +404,45 @@ int main(int argc, char** argv) {
         int check = select(max, &reading, NULL, NULL, NULL);
         if(FD_ISSET(msg_sock, &reading)) {
             check = recv(msg_sock, buf, 1024,0);
-            /* Decrypt and check */
-            other = connected[std::string(buf)];
-            /* Decrypt message*/
-            std::cout << other.get_username() << ": ";
-            std::cout << msg <<std::endl;
+            err_check = d_and_check(buf, check, msg, user.get_preference(), user);
+            token = strtok(msg, " ");
+            if(!strcmp(token, "MSG")) {
+            	token = strtok(NULL, " ");
+            	other = connected[std::string(token)];
+		        err_check = d_and_check(&msg[4+strlen(token)], check - 4 - strlen(token), buf, other.get_preference(), other);
+		        if(err_check != -1) {
+				    std::cout << other.get_username() << ": ";
+				    write(1, buf, err_check);
+				    std::cout << std::endl;
+		        }
+            }
         }
         if(FD_ISSET(comm_sock, &reading)) {
             check = recv(comm_sock, buf, 1024, 0);
-            /* Decrypt and check */
+            check = d_and_check(buf, check, msg, user.get_preference(), user);
             token = strtok(msg, " ");
             if(!strcmp(token, "CONNECT")) {
-                
+                token = strtok(NULL, " ");
+                other.set_username(std::string(token));
+                token = strtok(NULL, " ");
+                other.set_preference(std::string(token));
+                uint64_t key;
+                uint32_t N, e, d;
+                if(!strcmp(token, "DES")) {
+                	memcpy(&key, &msg[check-8], 8);
+                	other.set_des(key);
+                }
+                else {
+                	memcpy(&N, &msg[check-16], 4);
+                	memcpy(&d, &msg[check-4], 4);
+                	other.set_rsa_recv(N, d);
+                	other.set_sem_recv(N, d);
+                	memcpy(&d, &msg[check-8], 4);
+                	memcpy(&N, &msg[check-12], 4);
+                	other.set_rsa_send(N, e);
+                	other.set_sem_send(N, e);
+                }
+                connected[username] = other;
             }
             else if(!strcmp(token, "DISCONNECT")) {
                 token = strtok(NULL, " ");
@@ -493,37 +457,46 @@ int main(int argc, char** argv) {
             buf[check] = '\0';
             token = strtok(buf, " ");
             if(!strcmp(token, "MSG")) {
+            	if(check > 1000) {
+            		std::cout << "MSG is too long, please use a maximum of 1000 characters" << std::endl;
+            		continue;
+            	}
                 token = strtok(NULL, " ");
                 if(connected.count(std::string(token))) {
                     other = connected[std::string(token)];
-                    /* Encrypt buffer */
+                    int dummy, dummy2, dummy3;
+                    other.get_contact_info(dummy, dummy2, dummy3);
+                    err_check = e_and_send(&buf[5+strlen(token)], check - (5+strlen(token)), other.get_preference(), other, dummy2, encrypt);
                     strcpy(msg, "MSG ");
                     strcat(msg, token);
-                    memcpy(&msg[5+strlen(token)], &buf[5+strlen(token)], check-strlen(token)-5);
-                    /* Encrypt and send*/
+                    memcpy(&msg[5+strlen(token)], encrypt, check - (5+strlen(token)));
+                    e_and_send(msg, 5+strlen(token) + err_check, user.get_preference(), user, dummy2, NULL);
+                }
+                else {
+                	std::cout << "You are not connected to " << token << ", please connect before attempting to send messages." << std::endl;
                 }
             }
             else if(!strcmp(token, "CONNECT")) {
-            
+            	
             }
             else if(!strcmp(token, "DISCONNECT")) {
                 token = strtok(NULL, " ");
                 if(connected.count(std::string(token))) {
                     connected.erase(std::string(token));
                     err_check = sprintf(msg, "DISCONNECT %s", token);
-                    /* Encrypt and send*/
+                    e_and_send(msg, err_check, user.get_preference(), user, comm_sock, NULL);
                 }
             }
             else if(!strcmp(token, "LOGOFF")) {
                 /* Encrypt buffer and send */
+                e_and_send(token, strlen(token), user.get_preference(), user, comm_sock, NULL);
                 //heck = send(comm_sock, buf, 6, 0);
                 close(msg_sock);
                 close(comm_sock);
-                close(thread_pipe);
+                //close(thread_pipe);
                 return 0;
             }
             else if(!strcmp(token, "DISABLE")) {
-                /* Encrypt buffer */
                 token = strtok(NULL, " ");
                 err_check = user.remove_comm_opt(std::string(token));
                 if(err_check) {
@@ -537,22 +510,24 @@ int main(int argc, char** argv) {
                     }
                 }
                 err_check = sprintf(buf, "DISABLE %s", token);
-                /* Encrypt and send */
+                e_and_send(buf, err_check, user.get_preference(), user, comm_sock, NULL);
             }
             else if(!strcmp(token, "WHO")) {
-                /* Encrypt and send buffer as is*/
-                who(comm_sock);
+                e_and_send(token, 3, user.get_preference(), user, comm_sock, NULL);
+                who(comm_sock, user);
             }
             else if(!strcmp(token, "SET")) {
                 token = strtok(NULL, " ");
                 err_check = user.set_preference(std::string(token));
                 if(!err_check) {
                     err_check = sprintf(msg, "SET %s", token);
-                    /* Encrypt and send*/
+                    e_and_send(msg, err_check, user.get_preference(), user, comm_sock, NULL);
                 }
             }
             else if(!strcmp(token, "HELP")) {
                 std::cout << "COMMAND LIST:" << std::endl;
+                std::cout << "MSG[username,msg]: sends a message securely to another user via the server. " << std::endl;
+                std::cout << "Message contents will be unreadable by server. Messages can be no longer than 800"<<std::endl;
                 std::cout << "CONNECT [username]: connect to another user" << std::endl;
                 std::cout << "DISCONNECT [username]: disconnect from another user" << std::endl;
                 std::cout << "DISABLE [encrypt option]: Disable and encrytion option from being used" << std::endl;
@@ -572,6 +547,4 @@ int main(int argc, char** argv) {
     }
     return 0;
 }
-
-
 
