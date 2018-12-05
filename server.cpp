@@ -118,12 +118,16 @@ int user_access(std::string username, int code, char* buf, User* other, std::vec
         created[username].logout();
     }
     if(code == 5) {
-        std::string hash(buf);
+    	other->set_password(buf, 20);
+    	other->set_username(username);
         if(!created.count(username)) {
             created[username] = *other;
         }
         else {
-            if(created[username].get_password().compare(hash)) {
+        	char pass[21];
+        	int len;
+        	created[username].get_password(pass, len);
+            if(memcmp(pass, buf, 20)) {
                 ret_code = -1;
             }
         }
@@ -218,16 +222,18 @@ void* handle_client(void* arg) {
             token = strtok(NULL, " ");
             std::string id(token);
             char hash[20];
-            memcpy(hash, &buf[id.length() + 6], 20);
+            memcpy(hash, &buf[id.length() + 7], 20);
             check = user_access(id, 5, hash, &user, names);
             if(check == 0) {
+            	std::cout << "USER SUCCESSFULLY LOGGED IN" << std::endl;
                 user.set_username(id);
-                user.set_password(std::string(hash));
+                user.set_password(hash, 20);
                 err = sprintf(buf, "SUC");
                 e_and_send(buf, 3, "DES", user, comm_sock, NULL);
+                user.get_connect_info(&msg_sock_info);
                 err = recv(comm_sock, buf, 4095, 0);
                 d_and_check(buf, err, msg, user.get_preference(), user);
-                memcpy(&msg_sock_info, buf, sizeof(struct sockaddr_in));
+                memcpy(&msg_sock_info.sin_port, msg, 2);
                 msg_sock = socket(AF_INET, SOCK_STREAM, 0);
                 if(connect(msg_sock, (struct sockaddr*) &msg_sock_info, sizeof(struct sockaddr_in))) {
                 	sprintf(buf, "ERROR");

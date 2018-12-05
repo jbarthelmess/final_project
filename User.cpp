@@ -2,7 +2,7 @@
 
 User::User() {
     username = "";
-    password = "";
+    memset(password, 0, 33);
     rsa_send_n = rsa_recv_n = rsa_e = rsa_d = des = sem_send_n = sem_recv_n = sem_e = sem_d = 0;
     secure = false;
     online = false;
@@ -16,9 +16,8 @@ User::User() {
     last_online = 0;
 }
 
-User::User(std::string name, std::string pass) {
+User::User(std::string name) {
     username = name;
-    password = pass;
     rsa_send_n = rsa_recv_n = rsa_e = rsa_d = des = sem_send_n = sem_recv_n = sem_e = sem_d = 0;
     comm_priority.push_back(std::string("DES"));
     comm_priority.push_back(std::string("SEM"));
@@ -32,7 +31,8 @@ User::User(std::string name, std::string pass) {
 
 User::User(const User& old) {
     username = old.username;
-    password = old.password;
+    memcpy(password, old.password, old.pass_len);
+    pass_len = old.pass_len;
     rsa_send_n = old.rsa_send_n;
     rsa_recv_n = old.rsa_recv_n;
     rsa_e = old.rsa_e;
@@ -73,6 +73,12 @@ bool User::make_secure(std::vector<uint64_t>& sec) {
         return 0;
     }
     return 1;
+}
+
+void User::set_password(char* pass, int len) {
+	if(len < 32) {
+		memcpy(password, pass, len);
+	}
 }
 
 int User::set_preference(std::string top) {

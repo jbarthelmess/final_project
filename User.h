@@ -10,11 +10,12 @@
 #include<cstdint>
 #include<ctime>
 #include<vector>
+#include<cstring>
 
 class User {
     public:
     User();
-    User(std::string name, std::string pass);
+    User(std::string name);
     User(const User& old);
     
     bool is_secure() { return secure;}
@@ -26,7 +27,7 @@ class User {
     void reset_comm_preferences();
     void bring_online(int comm, int msg, struct sockaddr_in info);
     void set_username(std::string name) {username = name;}
-    void set_password(std::string pass) {password = pass;}
+    void set_password(char* pass, int len);
     void set_rsa_recv(uint64_t new_n, uint64_t new_d) { rsa_recv_n = new_n; rsa_d = new_d;}
     void set_rsa_send(uint64_t new_n, uint64_t new_e) { rsa_send_n = new_n; rsa_e = new_e;}
     void set_des(uint64_t new_des) { des = new_des;}
@@ -47,12 +48,13 @@ class User {
     bool has_preference(std::string pref);
     void get_des(uint64_t& DES) {DES = des;}
     std::string get_username() { return std::string(username);}
-    std::string get_password() { return std::string(password);}
+    void get_password(char* pass, int& size) { memcpy(pass, password, pass_len); size = pass_len;}
     void get_thread_read(int& pipe) {pipe = thread_pipe_r;}
+    void get_connect_info(struct sockaddr_in* conn) {conn->sin_family = comm_info.sin_family; conn->sin_addr.s_addr = comm_info.sin_addr.s_addr; }
     
     private:
     std::string username;
-    std::string password;
+    char password[33];
     std::list<std::string> comm_priority;
     uint64_t rsa_recv_n;
     uint64_t rsa_send_n;
@@ -71,6 +73,7 @@ class User {
     int thread_pipe_r;
     struct sockaddr_in comm_info;
     time_t last_online;
+    int pass_len;
 };
 
 #endif

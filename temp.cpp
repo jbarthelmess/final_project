@@ -185,7 +185,7 @@ void create_new_user_data(std::string& username, std::string& password) {
     tcsetattr(0, TCSANOW, &oldt);
 }
 
-int getusername(char* buf, int b_size, std::string user) {
+int getusername(char* buf, int b_size, std::string& user) {
     int len = 0;
     int code;
     while(len == 0) { // get username
@@ -214,7 +214,7 @@ int getusername(char* buf, int b_size, std::string user) {
     return 1;
 }
 
-void getpassword(char* place, int p_size, std::string pass) {
+void getpassword(char* place, int p_size, std::string& pass) {
     int len = 0;
     int code;
     struct termios oldt, newt;
@@ -341,7 +341,7 @@ int main(int argc, char** argv) {
         }
         strcpy(buf, username.c_str());
         strcat(buf, password.c_str());
-        SHA_1(std::string(buf), MAC);
+        SHA_1(buf,username.length() + password.length(), MAC);
         strcpy(msg, "LOGIN ");
         strcat(msg, username.c_str());
         memcpy(&msg[username.length() + 7], MAC, 20);
@@ -351,8 +351,8 @@ int main(int argc, char** argv) {
         if(err_check == -1) {
         	std::cout << "something went wrong" << std::endl;
         }
-        buf[err_check] = '\0';
-        if(!strcmp(buf, "SUC")) {
+        msg[err_check] = '\0';
+        if(!strcmp(msg, "SUC")) {
         	std::cout<< "LOGIN successful, setting up with server" <<std::endl;
         	int listener = socket(AF_INET, SOCK_STREAM, 0);
         	get_address(&holder);
@@ -367,13 +367,12 @@ int main(int argc, char** argv) {
         		perror("getsockname");
         		exit(1);
         	}
-        	holder.sin_port = msg_conn.sin_port;
         	if(listen(listener, 1) == -1) {
         		perror("listen");
         		exit(1);
         	}
-        	memcpy(buf, &holder, holder_len);
-        	e_and_send(buf, holder_len, "DES", user, comm_sock, NULL);
+        	memcpy(buf, &msg_conn.sin_port, 2);
+        	e_and_send(buf, 2, "DES", user, comm_sock, NULL);
         	msg_sock = accept(listener, (struct sockaddr*) &msg_conn, &msg_conn_len);
         	close(listener);
         	user.set_msg(msg_sock);
@@ -385,7 +384,7 @@ int main(int argc, char** argv) {
     }
     User other;
     /*LOGIN procedure*/
-    
+    std::cout << "You are now logged in!" << std::endl;
     /*Create message socket*/
     fd_set reading;
     int max;
@@ -454,9 +453,9 @@ int main(int argc, char** argv) {
         }
         if(FD_ISSET(0, &reading)) {
             check = read(0, buf, 2047);
-            buf[check] = '\0';
+            clean_in(buf, &check);
             token = strtok(buf, " ");
-            if(!strcmp(token, "MSG")) {
+            if(strcmp(token, "MSG")==0) {
             	if(check > 1000) {
             		std::cout << "MSG is too long, please use a maximum of 1000 characters" << std::endl;
             		continue;
@@ -476,10 +475,11 @@ int main(int argc, char** argv) {
                 	std::cout << "You are not connected to " << token << ", please connect before attempting to send messages." << std::endl;
                 }
             }
-            else if(!strcmp(token, "CONNECT")) {
+            else if(strcmp(token, "CONNECT") == 0) {
             	
             }
-            else if(!strcmp(token, "DISCONNECT")) {
+            
+            else if(strcmp(token, "DISCONNECT") == 0) {
                 token = strtok(NULL, " ");
                 if(connected.count(std::string(token))) {
                     connected.erase(std::string(token));
@@ -487,7 +487,7 @@ int main(int argc, char** argv) {
                     e_and_send(msg, err_check, user.get_preference(), user, comm_sock, NULL);
                 }
             }
-            else if(!strcmp(token, "LOGOFF")) {
+            else if(strcmp(token, "LOGOFF") == 0) {
                 /* Encrypt buffer and send */
                 e_and_send(token, strlen(token), user.get_preference(), user, comm_sock, NULL);
                 //heck = send(comm_sock, buf, 6, 0);
@@ -496,7 +496,7 @@ int main(int argc, char** argv) {
                 //close(thread_pipe);
                 return 0;
             }
-            else if(!strcmp(token, "DISABLE")) {
+            else if(strcmp(token, "DISABLE") == 0) {
                 token = strtok(NULL, " ");
                 err_check = user.remove_comm_opt(std::string(token));
                 if(err_check) {
@@ -512,11 +512,11 @@ int main(int argc, char** argv) {
                 err_check = sprintf(buf, "DISABLE %s", token);
                 e_and_send(buf, err_check, user.get_preference(), user, comm_sock, NULL);
             }
-            else if(!strcmp(token, "WHO")) {
+            else if(strcmp(token, "WHO") == 0) {
                 e_and_send(token, 3, user.get_preference(), user, comm_sock, NULL);
                 who(comm_sock, user);
             }
-            else if(!strcmp(token, "SET")) {
+            else if(strcmp(token, "SET") == 0) {
                 token = strtok(NULL, " ");
                 err_check = user.set_preference(std::string(token));
                 if(!err_check) {
@@ -524,10 +524,10 @@ int main(int argc, char** argv) {
                     e_and_send(msg, err_check, user.get_preference(), user, comm_sock, NULL);
                 }
             }
-            else if(!strcmp(token, "HELP")) {
+            else if(strcmp(token, "HELP") == 0) {
                 std::cout << "COMMAND LIST:" << std::endl;
                 std::cout << "MSG[username,msg]: sends a message securely to another user via the server. " << std::endl;
-                std::cout << "Message contents will be unreadable by server. Messages can be no longer than 800"<<std::endl;
+                std::cout << "\tMessage contents will be unreadable by server. Messages can be no longer than 800"<<std::endl;
                 std::cout << "CONNECT [username]: connect to another user" << std::endl;
                 std::cout << "DISCONNECT [username]: disconnect from another user" << std::endl;
                 std::cout << "DISABLE [encrypt option]: Disable and encrytion option from being used" << std::endl;
