@@ -84,7 +84,6 @@ void User::set_password(char* pass, int len) {
 
 int User::set_preference(std::string top) {
     if(!top.compare("RSA") || !top.compare("DES") || !top.compare("SEM")) {
-    	std::cout<<"NEW PREFERENCE IS "<<top<<std::endl;
         comm_priority.remove(top);
         comm_priority.push_front(top);
         return 0;
